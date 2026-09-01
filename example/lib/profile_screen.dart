@@ -1,17 +1,24 @@
-import 'package:flutter/material.dart';
+import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:extended_nested_scroll_view/extended_nested_scroll_view.dart';
+import 'package:flutter/material.dart';
 import 'package:sliver_tools/sliver_tools.dart';
 
-/// A canonical profile screen built on [ExtendedNestedScrollView] with
-/// `headerStretch: true`.
+/// A faithful, self-contained mirror of the real `ProfilePage` from the
+/// `feature_profile` package, stripped of app-specific deps (`core`, `domain`,
+/// `flutter_bloc`, `go_router`, `material_ui`, `refresh_custom`).
 ///
-/// The header is a stretchable `SliverAppBar` (`stretch: true` with
-/// `flexibleSpace.stretchModes`) whose `zoomBackground` + `fadeTitle` effects
-/// only activate when the outer scrollable is allowed to overscroll below 0.
-/// The stock `NestedScrollView` clamps that overscroll away, so without this
-/// package the banner never stretches. Here it does, and each tab list still
-/// scrolls independently under the pinned header.
+/// The same structure and logic is preserved so it doubles as a runnable
+/// proof that `ExtendedNestedScrollView(headerStretch: true)` makes the banner
+/// stretch AND lets `CustomRefreshIndicator` pull-to-refresh fire:
+///
+///   * a stretchable `SliverAppBar` banner ([ProfileBannerSliverAppBar]);
+///   * a `SliverStack` + `MultiSliver` that floats the info section over the
+///     banner via `SliverPositioned.fill(top: positionInfo(offset))`;
+///   * an `ExtendedSliverOverlapAbsorber` wrapping the whole stack;
+///   * a pinned `SliverAppBar` with a `TabBar` buffer holder;
+///   * three tab lists (`GridPostsWidget`, `ListWorkWidget`, `ListMusicWidget`).
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
@@ -19,112 +26,282 @@ class ProfileScreen extends StatefulWidget {
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
-  static const List<String> _tabs = <String>['Grid', 'List', 'About'];
+class _ProfileScreenState extends State<ProfileScreen>
+    with TickerProviderStateMixin {
+  late TabController _tabController;
+  late ScrollController scrollControllerGlobal;
+  final globaloffsetValue = ValueNotifier<double>(0);
+  double speedFactor = 3.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+    scrollControllerGlobal = ScrollController();
+    scrollControllerGlobal.addListener(_listener);
+  }
+
+  void _listener() {
+    globaloffsetValue.value = scrollControllerGlobal.offset;
+  }
+
+  double positionInfo(double value) => math.max(
+        0.0,
+        (Platform.isAndroid ? 210 : 230) -
+            (value / (value.isNegative ? 1 : speedFactor)),
+      );
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    scrollControllerGlobal.removeListener(_listener);
+    scrollControllerGlobal.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+
     return Scaffold(
-      body: RefreshIndicator(
-        onRefresh: _onRefresh,
-        child: DefaultTabController(
-          length: _tabs.length,
-          child: ExtendedNestedScrollView(
-            headerStretch: true,
-            headerSliverBuilder: (context, _) {
-              final handle = ExtendedNestedScrollView
-                  .sliverOverlapAbsorberHandleFor(context);
-              return <Widget>[
-                const SliverAppBar(
-                  pinned: false,
-                  stretch: true,
-                  expandedHeight: 240,
-                  toolbarHeight: 0,
-                  backgroundColor: Colors.deepPurple,
-                  flexibleSpace: FlexibleSpaceBar(
-                    collapseMode: CollapseMode.parallax,
-                    stretchModes: <StretchMode>[
-                      StretchMode.zoomBackground,
-                      StretchMode.fadeTitle,
-                    ],
-                    title: Text(
-                      'Jane Appleseed',
-                      style: TextStyle(color: Colors.white),
-                    ),
-                    background: Center(child: FlutterLogo(size: 96)),
-                  ),
-                ),
-                // The floating user card sits over the banner. Its height
-                // (140) plus the top negative offset (-70) is what makes it
-                // peek over the stretched image. The SliverStack from
-                // sliver_tools defines the stretchable region, exactly like
-                // the nested view that used to be `CustomScrollView` slivers.
-                SliverStack(
-                  children: <Widget>[
-                    const SliverToBoxAdapter(child: SizedBox(height: 80)),
-                    const SliverPositioned(
-                      top: -70,
-                      left: 16,
-                      right: 16,
-                      child: _UserCard(),
-                    ),
-                  ],
-                ),
-                // Track the overlap the pinned header creates so each tab
-                // list can inject the same spacing below it.
-                ExtendedSliverOverlapAbsorber(
-                  handle: handle,
-                  sliver: SliverPersistentHeader(
-                    pinned: true,
-                    delegate: _TabBarDelegate(tabs: _tabs),
-                  ),
-                ),
-              ];
-            },
-            body: Builder(
-              builder: (context) {
-                final handle = ExtendedNestedScrollView
-                    .sliverOverlapAbsorberHandleFor(context);
-                return TabBarView(
-                  children: <Widget>[
-                    _TabList(handle: handle, tab: 0),
-                    _TabList(handle: handle, tab: 1),
-                    _TabList(handle: handle, tab: 2),
-                  ],
-                );
+      body: SizedBox(
+        width: size.width,
+        height: size.height,
+        child: ValueListenableBuilder<double>(
+          valueListenable: globaloffsetValue,
+          builder: (context, offsetValue, child) {
+            return RefreshIndicator(
+              onRefresh: () async {
+                await Future<void>.delayed(const Duration(seconds: 3));
               },
-            ),
+              child: ExtendedNestedScrollView(
+                headerStretch: true,
+                controller: scrollControllerGlobal,
+                physics: const BouncingScrollPhysics(
+                  parent: AlwaysScrollableScrollPhysics(),
+                ),
+                headerSliverBuilder: (context, innerBoxIsScrolled) {
+                  final handle =
+                      ExtendedNestedScrollView.sliverOverlapAbsorberHandleFor(
+                        context,
+                      );
+                  return [
+                    ExtendedSliverOverlapAbsorber(
+                      handle: handle,
+                      sliver: SliverStack(
+                        children: [
+                          MultiSliver(
+                            children: [
+                              const ProfileBannerSliverAppBar(),
+                              const SliverToBoxAdapter(
+                                child: SizedBox(height: 140),
+                              ),
+                              ProfileTabBarSliverAppBar(
+                                tabController: _tabController,
+                                globalOffsetValue: globaloffsetValue,
+                              ),
+                            ],
+                          ),
+                          SliverPositioned.fill(
+                            top: positionInfo(offsetValue),
+                            child: const ProfileInfoAndAchievementsSection(),
+                          ),
+                          ProfileSettingsButton(size: size),
+                        ],
+                      ),
+                    ),
+                  ];
+                },
+                body: Builder(
+                  builder: (context) {
+                    final handle =
+                        ExtendedNestedScrollView.sliverOverlapAbsorberHandleFor(
+                          context,
+                        );
+                    return TabBarView(
+                      controller: _tabController,
+                      children: [
+                        GridPostsWidget(handle: handle),
+                        ListWorkWidget(handle: handle),
+                        const ListMusicWidget(),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+/// SliverAppBar encargado de mostrar el banner expandible.
+class ProfileBannerSliverAppBar extends StatelessWidget {
+  const ProfileBannerSliverAppBar({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return SliverAppBar(
+      stretch: true,
+      expandedHeight: 200,
+      flexibleSpace: FlexibleSpaceBar(
+        stretchModes: const [StretchMode.zoomBackground, StretchMode.blurBackground],
+        collapseMode: CollapseMode.pin,
+        background: const ColoredBox(
+          color: Colors.deepPurple,
+          child: Center(
+            child: FlutterLogo(size: 96),
           ),
         ),
       ),
     );
   }
-
-  Future<void> _onRefresh() async {
-    await Future<void>.delayed(const Duration(seconds: 2));
-  }
 }
 
-class _TabList extends StatelessWidget {
-  const _TabList({required this.handle, required this.tab});
+/// SliverAppBar que incluye el título dinámico colapsable y el TabBar persistente.
+class ProfileTabBarSliverAppBar extends StatelessWidget {
+  const ProfileTabBarSliverAppBar({
+    super.key,
+    required this.tabController,
+    required this.globalOffsetValue,
+  });
 
-  final ExtendedSliverOverlapAbsorberHandle handle;
-  final int tab;
+  final TabController tabController;
+  final ValueNotifier<double> globalOffsetValue;
 
   @override
   Widget build(BuildContext context) {
-    return CustomScrollView(
-      key: ValueKey<String>('tab-$tab'),
-      physics: const AlwaysScrollableScrollPhysics(),
-      slivers: <Widget>[
-        ExtendedSliverOverlapInjector(handle: handle),
-        SliverPadding(
-          padding: const EdgeInsets.all(12),
-          sliver: SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (context, index) => _PostTile(index: index, tab: tab),
-              childCount: 16,
-            ),
+    final texts = Theme.of(context).textTheme;
+
+    return SliverAppBar(
+      pinned: true,
+      primary: true,
+      title: ValueListenableBuilder<double>(
+        valueListenable: globalOffsetValue,
+        builder: (context, offsetValue, child) {
+          final bool isCollapsed = offsetValue > 250;
+
+          return AnimatedSwitcher(
+            duration: const Duration(milliseconds: 250),
+            child: isCollapsed
+                ? Text(
+                    'Jane Appleseed',
+                    key: const ValueKey('profile_header_text'),
+                    style: texts.titleLarge,
+                  )
+                : const SizedBox.shrink(key: ValueKey('empty_header')),
+          );
+        },
+      ),
+      bottom: TabBar(
+        controller: tabController,
+        indicatorColor: Colors.pinkAccent,
+        indicatorSize: TabBarIndicatorSize.label,
+        labelColor: Colors.pinkAccent,
+        unselectedLabelColor: Colors.grey,
+        tabs: const [
+          Tab(icon: Icon(Icons.grid_view_rounded), text: 'Posts'),
+          Tab(icon: Icon(Icons.menu_book_rounded), text: 'Obras'),
+          Tab(icon: Icon(Icons.music_note_rounded), text: 'Música'),
+        ],
+      ),
+    );
+  }
+}
+
+/// Sección con la información de perfil (avatar, datos) y lista de logros.
+class ProfileInfoAndAchievementsSection extends StatelessWidget {
+  const ProfileInfoAndAchievementsSection({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      child: Column(
+        children: const [
+          InfoProfileWidget(),
+          _SectionAchievementsHeader(title: 'Logros', linkText: 'Ver todos'),
+        ],
+      ),
+    );
+  }
+}
+
+/// Botón flotante superior derecho para acceder a Configuración.
+class ProfileSettingsButton extends StatelessWidget {
+  const ProfileSettingsButton({super.key, required this.size});
+
+  final Size size;
+
+  @override
+  Widget build(BuildContext context) {
+    final padding = MediaQuery.paddingOf(context);
+
+    return SliverPositioned.fill(
+      left: size.width - 55,
+      bottom: (size.height / 1.25) - (Platform.isIOS ? 25 : 0),
+      child: Container(
+        width: 34,
+        height: 34,
+        margin: EdgeInsets.only(top: padding.top, right: 10),
+        clipBehavior: Clip.antiAliasWithSaveLayer,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.white.withValues(alpha: 0.1),
+        ),
+        child: const Icon(
+          Icons.settings_outlined,
+          color: Colors.white,
+          size: 25,
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionAchievementsHeader extends StatelessWidget {
+  final String title;
+  final String linkText;
+
+  const _SectionAchievementsHeader({required this.title, required this.linkText});
+
+  @override
+  Widget build(BuildContext context) {
+    final themeData = Theme.of(context);
+    final colors = themeData.colorScheme;
+    final texts = themeData.textTheme;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(title, style: texts.titleSmall),
+              GestureDetector(
+                onTap: () {},
+                child: Text(
+                  linkText,
+                  style: texts.labelSmall?.copyWith(color: colors.primary),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(
+          height: 80,
+          child: Row(
+            children: [
+              SizedBox(width: 16),
+              _AchievementCard(),
+              SizedBox(width: 12),
+              _AchievementCard(),
+              SizedBox(width: 12),
+              _AchievementCard(),
+            ],
           ),
         ),
       ],
@@ -132,81 +309,128 @@ class _TabList extends StatelessWidget {
   }
 }
 
-class _PostTile extends StatelessWidget {
-  const _PostTile({required this.index, required this.tab});
-
-  final int index;
-  final int tab;
+class _AchievementCard extends StatelessWidget {
+  const _AchievementCard();
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Container(
-      height: 72,
-      margin: const EdgeInsets.only(bottom: 12),
+      width: 72,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colors.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(12),
-        boxShadow: const <BoxShadow>[
-          BoxShadow(color: Colors.black12, blurRadius: 4),
-        ],
       ),
-      child: Center(child: Text('Tab ${tab + 1} · Post $index')),
+      child: const Icon(Icons.emoji_events_outlined),
     );
   }
 }
 
-class _UserCard extends StatelessWidget {
-  const _UserCard();
+class InfoProfileWidget extends StatelessWidget {
+  const InfoProfileWidget({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 140,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: const <BoxShadow>[
-          BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4)),
+    return const Padding(
+      padding: EdgeInsets.all(16),
+      child: Row(
+        children: [
+          CircleAvatar(radius: 40),
+          SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Jane Appleseed', style: TextStyle(fontWeight: FontWeight.bold)),
+                Text('@jane'),
+              ],
+            ),
+          ),
         ],
       ),
-      child: const Center(child: Text('User card')),
     );
   }
 }
 
-class _TabBarDelegate extends SliverPersistentHeaderDelegate {
-  const _TabBarDelegate({required this.tabs});
+class GridPostsWidget extends StatelessWidget {
+  const GridPostsWidget({super.key, required this.handle});
 
-  final List<String> tabs;
-
-  static const double _height = 48;
+  final ExtendedSliverOverlapAbsorberHandle handle;
 
   @override
-  double get minExtent => _height;
-
-  @override
-  double get maxExtent => _height;
-
-  @override
-  Widget build(
-    BuildContext context,
-    double shrinkOffset,
-    bool overlapsContent,
-  ) {
-    return Material(
-      color: Colors.white,
-      elevation: 2,
-      child: TabBar(
-        labelColor: Colors.deepPurple,
-        tabs: tabs
-            .map((String label) => Tab(text: label))
-            .toList(growable: false),
-      ),
+  Widget build(BuildContext context) {
+    return CustomScrollView(
+      key: const ValueKey<String>('grid-posts'),
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        ExtendedSliverOverlapInjector(handle: handle),
+        SliverGrid(
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            mainAxisSpacing: 4,
+            crossAxisSpacing: 4,
+          ),
+          delegate: SliverChildBuilderDelegate(
+            (context, i) => Container(
+              color: Colors.primaries[i % Colors.primaries.length].shade300,
+            ),
+            childCount: 30,
+          ),
+        ),
+      ],
     );
   }
+}
+
+class ListWorkWidget extends StatelessWidget {
+  const ListWorkWidget({super.key, required this.handle});
+
+  final ExtendedSliverOverlapAbsorberHandle handle;
 
   @override
-  bool shouldRebuild(covariant _TabBarDelegate oldDelegate) {
-    return oldDelegate.tabs != tabs;
+  Widget build(BuildContext context) {
+    return CustomScrollView(
+      key: const ValueKey<String>('list-work'),
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        ExtendedSliverOverlapInjector(handle: handle),
+        SliverList(
+          delegate: SliverChildBuilderDelegate(
+            (context, i) => ListTile(
+              title: Text('Obra ${i + 1}'),
+              leading: const Icon(Icons.menu_book),
+            ),
+            childCount: 30,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class ListMusicWidget extends StatelessWidget {
+  const ListMusicWidget({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        SliverToBoxAdapter(
+          child: SizedBox(
+            height: 300,
+            child: Center(child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.music_note, size: 48),
+                const SizedBox(height: 8),
+                Text('Tu música', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 240),
+              ],
+            )),
+          ),
+        ),
+      ],
+    );
   }
 }
