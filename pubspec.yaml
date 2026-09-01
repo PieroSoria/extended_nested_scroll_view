@@ -5,7 +5,6 @@ description: >-
   and keeps every tab list scrolling independently, alongside the pinned
   header and pull-to-refresh support of the original widget.
 version: 0.1.0
-repository: https://github.com/example/extended_nested_scroll_view
 
 environment:
   sdk: ^3.13.2
