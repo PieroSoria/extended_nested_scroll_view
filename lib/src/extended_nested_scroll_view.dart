@@ -49,7 +49,7 @@ typedef ExtendedNestedScrollViewHeaderSliversBuilder =
 /// {@tool dartpad}
 /// This example shows a [ExtendedNestedScrollView] whose header is the combination of a
 /// [TabBar] in a [SliverAppBar] and whose body is a [TabBarView]. It uses a
-/// [SliverOverlapAbsorber]/[SliverOverlapInjector] pair to make the inner lists
+/// [ExtendedSliverOverlapAbsorber]/[ExtendedSliverOverlapInjector] pair to make the inner lists
 /// align correctly, and it uses [SafeArea] to avoid any horizontal disturbances
 /// (e.g. the "notch" on iOS when the phone is horizontal). In addition,
 /// [PageStorageKey]s are used to remember the scroll position of each tab's
@@ -124,10 +124,10 @@ typedef ExtendedNestedScrollViewHeaderSliversBuilder =
 /// without floating.
 ///
 /// The [SliverAppBar.snap] animation should be used in conjunction with the
-/// [SliverOverlapAbsorber] and  [SliverOverlapInjector] widgets when
+/// [ExtendedSliverOverlapAbsorber] and  [ExtendedSliverOverlapInjector] widgets when
 /// implemented in a [ExtendedNestedScrollView]. These widgets take any overlapping
 /// behavior of the [SliverAppBar] in the header and redirect it to the
-/// [SliverOverlapInjector] in the body. If it is missing, then it is possible
+/// [ExtendedSliverOverlapInjector] in the body. If it is missing, then it is possible
 /// for the nested "inner" scroll view below to end up under the [SliverAppBar]
 /// even when the inner scroll view thinks it has not been scrolled.
 ///
@@ -135,8 +135,8 @@ typedef ExtendedNestedScrollViewHeaderSliversBuilder =
 /// This simple example shows a [ExtendedNestedScrollView] whose header contains a
 /// snapping, floating [SliverAppBar]. _Without_ setting any additional flags,
 /// e.g [ExtendedNestedScrollView.floatHeaderSlivers], the [SliverAppBar] will animate
-/// in and out without floating. The [SliverOverlapAbsorber] and
-/// [SliverOverlapInjector] maintain the proper alignment between the two
+/// in and out without floating. The [ExtendedSliverOverlapAbsorber] and
+/// [ExtendedSliverOverlapInjector] maintain the proper alignment between the two
 /// separate scroll views.
 ///
 /// ** See code in examples/api/lib/widgets/nested_scroll_view/nested_scroll_view.2.dart **
@@ -151,22 +151,18 @@ typedef ExtendedNestedScrollViewHeaderSliversBuilder =
 ///
 /// ### Stretching [SliverAppBar]s
 ///
-/// Unlike the stock [ExtendedNestedScrollView] from the Flutter SDK, this
-/// package supports stretching the outer scrollable via
-/// [ExtendedNestedScrollView.headerStretch]. Set `headerStretch: true` together
-/// with a `SliverAppBar` that has [SliverAppBar.stretch] and a
-/// [FlexibleSpaceBar] whose [FlexibleSpaceBar.stretchModes] include
-/// [StretchMode.zoomBackground]. Without it, the coordinator clamps the outer
-/// scroll offset at zero and the stretch never appears (Flutter issue #54059).
+// See https://github.com/flutter/flutter/issues/54059
+/// Currently, [ExtendedNestedScrollView] does not support stretching the outer
+/// scrollable, e.g. when using [SliverAppBar.stretch].
 ///
 /// See also:
 ///
 ///  * [SliverAppBar], for examples on different configurations like floating,
 ///    pinned and snap behaviors.
-///  * [SliverOverlapAbsorber], a sliver that wraps another, forcing its layout
+///  * [ExtendedSliverOverlapAbsorber], a sliver that wraps another, forcing its layout
 ///    extent to be treated as overlap.
-///  * [SliverOverlapInjector], a sliver that has a sliver geometry based on
-///    the values stored in a [SliverOverlapAbsorberHandle].
+///  * [ExtendedSliverOverlapInjector], a sliver that has a sliver geometry based on
+///    the values stored in a [ExtendedSliverOverlapAbsorberHandle].
 class ExtendedNestedScrollView extends StatefulWidget {
   /// Creates a nested scroll view.
   ///
@@ -289,50 +285,18 @@ class ExtendedNestedScrollView extends StatefulWidget {
   /// is expected to float.
   final bool floatHeaderSlivers;
 
-  /// Whether the outer header is allowed to over-scroll past its leading edge.
+  /// Whether pulling down from the very top of the nested scroll view is
+  /// routed to the outer scrollable as an overscroll, letting the leading
+  /// header sliver render its `FlexibleSpaceBar.stretchModes` effect.
   ///
-  /// Flutter's [SliverAppBar] stretching (`SliverAppBar.stretch` +
-  /// `FlexibleSpaceBar.stretchModes`) is driven by the first outer sliver
-  /// receiving a negative `SliverConstraints.overlap`, which only happens when
-  /// the *outer* scroll position of the `ExtendedNestedScrollView` goes below
-  /// zero. The stock `NestedScrollView` coordinator clamps that position at
-  /// zero, so the stretch effect never triggers inside a plain
-  /// [NestedScrollView].
+  /// The stock `ExtendedNestedScrollView` clamps the outer offset at its
+  /// minimum, so `SliverAppBar.stretch` / `FlexibleSpaceBar.stretchModes`
+  /// never activate. When [headerStretch] is `true`, a drag that pulls down
+  /// while *every* scrollable (the banner and all inner lists) is parked at
+  /// its leading edge overscrolls the header below `0` with
+  /// `BouncingScrollPhysics`-style friction and springs it back on release.
   ///
-  /// When [headerStretch] is true, a drag that pulls down while *every*
-  /// scrollable (outer and all inner lists) is already at its minimum scroll
-  /// extent is routed to the outer scrollable as overscroll. The very first
-  /// sliver of [headerSliverBuilder] is then free to stretch (zoom the banner,
-  /// trigger `onStretchTrigger`, ...). Releasing the drag bounces the header
-  /// back to zero.
-  ///
-  /// ```dart
-  /// ExtendedNestedScrollView(
-  ///   headerStretch: true,
-  ///   headerSliverBuilder: (context, innerBoxIsScrolled) {
-  ///     return <Widget>[
-  ///       SliverAppBar(
-  ///         stretch: true,
-  ///         expandedHeight: 240,
-  ///         flexibleSpace: FlexibleSpaceBar(
-  ///           stretchModes: const <StretchMode>[
-  ///             StretchMode.zoomBackground,
-  ///             StretchMode.fadeTitle,
-  ///           ],
-  ///           background: const DecoratedBox(
-  ///             decoration: BoxDecoration(
-  ///               gradient: LinearGradient(colors: <Color>[Colors.indigo, Colors.blue]),
-  ///             ),
-  ///           ),
-  ///         ),
-  ///       ),
-  ///     ];
-  ///   },
-  ///   body: const SizedBox.shrink(),
-  /// )
-  /// ```
-  ///
-  /// Defaults to false, preserving the stock `NestedScrollView` behavior.
+  /// Defaults to `false`, preserving the stock behavior exactly.
   final bool headerStretch;
 
   /// {@macro flutter.material.Material.clipBehavior}
@@ -357,15 +321,15 @@ class ExtendedNestedScrollView extends StatefulWidget {
   /// or separate and desirous of unique behaviors.
   final ScrollBehavior? scrollBehavior;
 
-  /// Returns the [SliverOverlapAbsorberHandle] of the nearest ancestor
+  /// Returns the [ExtendedSliverOverlapAbsorberHandle] of the nearest ancestor
   /// [ExtendedNestedScrollView].
   ///
-  /// This is necessary to configure the [SliverOverlapAbsorber] and
-  /// [SliverOverlapInjector] widgets.
+  /// This is necessary to configure the [ExtendedSliverOverlapAbsorber] and
+  /// [ExtendedSliverOverlapInjector] widgets.
   ///
   /// For sample code showing how to use this method, see the [ExtendedNestedScrollView]
   /// documentation.
-  static SliverOverlapAbsorberHandle sliverOverlapAbsorberHandleFor(BuildContext context) {
+  static ExtendedSliverOverlapAbsorberHandle sliverOverlapAbsorberHandleFor(BuildContext context) {
     final _InheritedExtendedNestedScrollView? target = context
         .dependOnInheritedWidgetOfExactType<_InheritedExtendedNestedScrollView>();
     assert(
@@ -425,7 +389,7 @@ class ExtendedNestedScrollView extends StatefulWidget {
 /// ** See code in examples/api/lib/widgets/nested_scroll_view/nested_scroll_view_state.0.dart **
 /// {@end-tool}
 class ExtendedNestedScrollViewState extends State<ExtendedNestedScrollView> {
-  final SliverOverlapAbsorberHandle _absorberHandle = SliverOverlapAbsorberHandle();
+  final ExtendedSliverOverlapAbsorberHandle _absorberHandle = ExtendedSliverOverlapAbsorberHandle();
 
   /// The [ScrollController] provided to the [ScrollView] in
   /// [ExtendedNestedScrollView.body].
@@ -569,7 +533,7 @@ class _ExtendedNestedScrollViewCustomScrollView extends CustomScrollView {
     super.restorationId,
   });
 
-  final SliverOverlapAbsorberHandle handle;
+  final ExtendedSliverOverlapAbsorberHandle handle;
 
   @override
   Widget buildViewport(
@@ -697,12 +661,12 @@ class _NestedScrollCoordinator implements ScrollActivityDelegate, ScrollHoldCont
     return outer.haveDimensions && outer.extentAfter == 0.0;
   }
 
-bool get hasScrolledBody {
+  bool get hasScrolledBody {
     for (final _NestedScrollPosition position in _innerPositions) {
       if (!position.hasContentDimensions || !position.hasPixels) {
-        // It's possible that NestedScrollView built twice before layout phase
+        // It's possible that ExtendedNestedScrollView built twice before layout phase
         // in the same frame. This can happen when the FocusManager schedules a microTask
-        // that marks NestedScrollView dirty during the warm up frame.
+        // that marks ExtendedNestedScrollView dirty during the warm up frame.
         // https://github.com/flutter/flutter/pull/75308
         continue;
       } else if (position.pixels > position.minScrollExtent) {
@@ -710,88 +674,6 @@ bool get hasScrolledBody {
       }
     }
     return false;
-  }
-
-  /// Friction applied to the outer header once it is over-scrolled below its
-  /// minimum scroll extent. Mirrors the factor used by [BouncingScrollPhysics]
-  /// so the stretch feels like a native iOS bounce.
-  static const double _kStretchFriction = 0.52;
-
-  /// Whether the next positive (pull down) drag delta should be turned into
-  /// header stretch instead of the regular inner-first coordination.
-  ///
-  /// Only when every scrollable (outer header plus all inner lists) is parked
-  /// at its leading edge. Otherwise the stock coordination must move the inner
-  /// lists back to the top before any stretch can happen.
-  bool _canStretchHeaderOnTop() {
-    if (!_stretchHeader) {
-      return false;
-    }
-    final _NestedScrollPosition? outer = _outerPosition;
-    if (outer == null || !outer.haveDimensions) {
-      return false;
-    }
-    const double epsilon = 0.001;
-    if (outer.pixels > outer.minScrollExtent + epsilon) {
-      return false;
-    }
-    for (final _NestedScrollPosition position in _innerPositions) {
-      if (!position.hasContentDimensions) {
-        continue;
-      }
-      if (position.pixels > position.minScrollExtent + epsilon) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-/// Applies a friction damped over-scroll to the outer position, letting the
-  /// leading header sliver render its `FlexibleSpaceBar.stretchModes` effect.
-  ///
-  /// `delta` is the touch drag delta: positive grows the stretch (pixels go
-  /// below `minScrollExtent`), negative while already stretched eases the
-  /// header back toward the top. Mirrors `BouncingScrollPhysics` so the
-  /// stretch feels like a native iOS bounce, emits the same
-  /// listener/notification surface as a regular drag, and never overshoots the
-  /// leading edge on the way back.
-  void _applyHeaderStretch(double delta) {
-    final _NestedScrollPosition outer = _outerPosition!;
-    final double movement = _headerStretchMovement(delta);
-    if (movement.abs() < precisionErrorTolerance) {
-      return;
-    }
-    outer.applyHeaderStretch(movement);
-  }
-
-  /// Friction-adjusted signed pixel movement for `delta` (see [_applyHeaderStretch]).
-  ///
-  /// A positive result grows the stretch (pixels move more negative); a
-  /// negative result eases the stretch back toward the leading edge.
-  double _headerStretchMovement(double delta) {
-    final _NestedScrollPosition outer = _outerPosition!;
-    final double overscrollPast =
-        math.max(outer.minScrollExtent - outer.pixels, 0.0);
-    if (overscrollPast == 0.0 && delta <= 0.0) {
-      return 0.0;
-    }
-    final double viewport = outer.viewportDimension;
-    double gamma(double fraction) =>
-        _kStretchFriction * math.pow(1.0 - fraction, 2).toDouble();
-    final double fraction = overscrollPast / viewport;
-    if (delta > 0.0) {
-      // Tensioning: the further the stretch already is, the harder to pull.
-      if (overscrollPast <= 0.0) {
-        return delta * gamma(0.0);
-      }
-      final double deltaToLimit = overscrollPast / gamma(fraction);
-      return delta < deltaToLimit ? delta * gamma(fraction) : overscrollPast;
-    }
-    // Easing back from a stretch: much less resistance than tensioning, and
-    // never past the leading edge.
-    final double easedFraction =
-        math.max(0.0, (overscrollPast - delta.abs()) / viewport);
-    return math.max(-overscrollPast, delta * gamma(easedFraction));
   }
 
   void updateShadow() {
@@ -1257,6 +1139,87 @@ bool get hasScrolledBody {
         }
       }
     }
+  }
+
+  /// Friction applied to the outer header once it is over-scrolled below its
+  /// minimum scroll extent. Mirrors the factor used by [BouncingScrollPhysics]
+  /// so the stretch feels like a native iOS bounce.
+  static const double _kStretchFriction = 0.52;
+
+  /// Whether a pull-down drag should be turned into header stretch instead of
+  /// the regular inner-first coordination.
+  ///
+  /// Only when every scrollable (outer header plus all inner lists) is parked
+  /// at its leading edge. Otherwise the stock coordination must move the inner
+  /// lists back to the top before any stretch can happen.
+  bool _canStretchHeaderOnTop() {
+    if (!_stretchHeader) {
+      return false;
+    }
+    final _NestedScrollPosition? outer = _outerPosition;
+    if (outer == null || !outer.haveDimensions) {
+      return false;
+    }
+    const double epsilon = 0.001;
+    if (outer.pixels > outer.minScrollExtent + epsilon) {
+      return false;
+    }
+    for (final _NestedScrollPosition position in _innerPositions) {
+      if (!position.hasContentDimensions) {
+        continue;
+      }
+      if (position.pixels > position.minScrollExtent + epsilon) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /// Routes a touch `delta` to the outer position as header stretch.
+  ///
+  /// `delta` is the touch drag delta: positive grows the stretch (pixels go
+  /// below `minScrollExtent`), negative while already stretched eases the
+  /// header back toward the top. Mirrors `BouncingScrollPhysics` so the
+  /// stretch feels like a native iOS bounce, emits the same
+  /// listener/notification surface as a regular drag, and never overshoots
+  /// the leading edge on the way back.
+  void _applyHeaderStretch(double delta) {
+    final _NestedScrollPosition outer = _outerPosition!;
+    final double movement = _headerStretchMovement(delta);
+    if (movement.abs() < precisionErrorTolerance) {
+      return;
+    }
+    outer.applyHeaderStretch(movement);
+  }
+
+  /// Friction-adjusted signed pixel movement for `delta` (see [_applyHeaderStretch]).
+  ///
+  /// A positive result grows the stretch (pixels move more negative); a
+  /// negative result eases the stretch back toward the leading edge.
+  double _headerStretchMovement(double delta) {
+    final _NestedScrollPosition outer = _outerPosition!;
+    final double overscrollPast =
+        math.max(outer.minScrollExtent - outer.pixels, 0.0);
+    if (overscrollPast == 0.0 && delta <= 0.0) {
+      return 0.0;
+    }
+    final double viewport = outer.viewportDimension;
+    double gamma(double fraction) =>
+        _kStretchFriction * math.pow(1.0 - fraction, 2).toDouble();
+    final double fraction = overscrollPast / viewport;
+    if (delta > 0.0) {
+      // Tensioning: the further the stretch already is, the harder to pull.
+      if (overscrollPast <= 0.0) {
+        return delta * gamma(0.0);
+      }
+      final double deltaToLimit = overscrollPast / gamma(fraction);
+      return delta < deltaToLimit ? delta * gamma(fraction) : overscrollPast;
+    }
+    // Easing back from a stretch: much less resistance than tensioning, and
+    // never past the leading edge.
+    final double easedFraction =
+        math.max(0.0, (overscrollPast - delta.abs()) / viewport);
+    return math.max(-overscrollPast, delta * gamma(easedFraction));
   }
 
   void setParent(ScrollController? value) {
@@ -1744,68 +1707,68 @@ class _NestedOuterBallisticScrollActivity extends BallisticScrollActivity {
   }
 }
 
-/// Handle to provide to a [SliverOverlapAbsorber], a [SliverOverlapInjector],
+/// Handle to provide to a [ExtendedSliverOverlapAbsorber], a [ExtendedSliverOverlapInjector],
 /// and an [ExtendedNestedScrollViewViewport], to shift overlap in a [ExtendedNestedScrollView].
 ///
-/// A particular [SliverOverlapAbsorberHandle] can only be assigned to a single
-/// [SliverOverlapAbsorber] at a time. It can also be (and normally is) assigned
-/// to one or more [SliverOverlapInjector]s, which must be later descendants of
-/// the same [ExtendedNestedScrollViewViewport] as the [SliverOverlapAbsorber]. The
-/// [SliverOverlapAbsorber] must be a direct descendant of the
+/// A particular [ExtendedSliverOverlapAbsorberHandle] can only be assigned to a single
+/// [ExtendedSliverOverlapAbsorber] at a time. It can also be (and normally is) assigned
+/// to one or more [ExtendedSliverOverlapInjector]s, which must be later descendants of
+/// the same [ExtendedNestedScrollViewViewport] as the [ExtendedSliverOverlapAbsorber]. The
+/// [ExtendedSliverOverlapAbsorber] must be a direct descendant of the
 /// [ExtendedNestedScrollViewViewport], taking part in the same sliver layout. (The
-/// [SliverOverlapInjector] can be a descendant that takes part in a nested
+/// [ExtendedSliverOverlapInjector] can be a descendant that takes part in a nested
 /// scroll view's sliver layout.)
 ///
 /// Whenever the [ExtendedNestedScrollViewViewport] is marked dirty for layout, it will
-/// cause its assigned [SliverOverlapAbsorberHandle] to fire notifications. It
-/// is the responsibility of the [SliverOverlapInjector]s (and any other
+/// cause its assigned [ExtendedSliverOverlapAbsorberHandle] to fire notifications. It
+/// is the responsibility of the [ExtendedSliverOverlapInjector]s (and any other
 /// clients) to mark themselves dirty when this happens, in case the geometry
 /// subsequently changes during layout.
 ///
 /// See also:
 ///
 ///  * [ExtendedNestedScrollView], which uses a [ExtendedNestedScrollViewViewport] and a
-///    [SliverOverlapAbsorber] to align its children, and which shows sample
+///    [ExtendedSliverOverlapAbsorber] to align its children, and which shows sample
 ///    usage for this class.
-class SliverOverlapAbsorberHandle extends ChangeNotifier {
-  /// Creates a [SliverOverlapAbsorberHandle].
-  SliverOverlapAbsorberHandle() {
+class ExtendedSliverOverlapAbsorberHandle extends ChangeNotifier {
+  /// Creates a [ExtendedSliverOverlapAbsorberHandle].
+  ExtendedSliverOverlapAbsorberHandle() {
     if (kFlutterMemoryAllocationsEnabled) {
       ChangeNotifier.maybeDispatchObjectCreation(this);
     }
   }
 
-  // Incremented when a RenderSliverOverlapAbsorber takes ownership of this
+  // Incremented when a RenderExtendedSliverOverlapAbsorber takes ownership of this
   // object, decremented when it releases it. This allows us to find cases where
   // the same handle is being passed to two render objects.
   int _writers = 0;
 
   /// The current amount of overlap being absorbed by the
-  /// [SliverOverlapAbsorber].
+  /// [ExtendedSliverOverlapAbsorber].
   ///
   /// This corresponds to the [SliverGeometry.layoutExtent] of the child of the
-  /// [SliverOverlapAbsorber].
+  /// [ExtendedSliverOverlapAbsorber].
   ///
-  /// This is updated during the layout of the [SliverOverlapAbsorber]. It
+  /// This is updated during the layout of the [ExtendedSliverOverlapAbsorber]. It
   /// should not change at any other time. No notifications are sent when it
-  /// changes; clients (e.g. [SliverOverlapInjector]s) are responsible for
+  /// changes; clients (e.g. [ExtendedSliverOverlapInjector]s) are responsible for
   /// marking themselves dirty whenever this object sends notifications, which
-  /// happens any time the [SliverOverlapAbsorber] might subsequently change the
+  /// happens any time the [ExtendedSliverOverlapAbsorber] might subsequently change the
   /// value during that layout.
   double? get layoutExtent => _layoutExtent;
   double? _layoutExtent;
 
   /// The total scroll extent of the gap being absorbed by the
-  /// [SliverOverlapAbsorber].
+  /// [ExtendedSliverOverlapAbsorber].
   ///
   /// This corresponds to the [SliverGeometry.scrollExtent] of the child of the
-  /// [SliverOverlapAbsorber].
+  /// [ExtendedSliverOverlapAbsorber].
   ///
-  /// This is updated during the layout of the [SliverOverlapAbsorber]. It
+  /// This is updated during the layout of the [ExtendedSliverOverlapAbsorber]. It
   /// should not change at any other time. No notifications are sent when it
-  /// changes; clients (e.g. [SliverOverlapInjector]s) are responsible for
+  /// changes; clients (e.g. [ExtendedSliverOverlapInjector]s) are responsible for
   /// marking themselves dirty whenever this object sends notifications, which
-  /// happens any time the [SliverOverlapAbsorber] might subsequently change the
+  /// happens any time the [ExtendedSliverOverlapAbsorber] might subsequently change the
   /// value during that layout.
   double? get scrollExtent => _scrollExtent;
   double? _scrollExtent;
@@ -1813,7 +1776,7 @@ class SliverOverlapAbsorberHandle extends ChangeNotifier {
   void _setExtents(double? layoutValue, double? scrollValue) {
     assert(
       _writers == 1,
-      'Multiple RenderSliverOverlapAbsorbers have been provided the same SliverOverlapAbsorberHandle.',
+      'Multiple RenderExtendedSliverOverlapAbsorbers have been provided the same ExtendedSliverOverlapAbsorberHandle.',
     );
     _layoutExtent = layoutValue;
     _scrollExtent = scrollValue;
@@ -1828,7 +1791,7 @@ class SliverOverlapAbsorberHandle extends ChangeNotifier {
       1 => null, // normal case
       _ => ', $_writers WRITERS ASSIGNED',
     };
-    return '${objectRuntimeType(this, 'SliverOverlapAbsorberHandle')}($layoutExtent$extra)';
+    return '${objectRuntimeType(this, 'ExtendedSliverOverlapAbsorberHandle')}($layoutExtent$extra)';
   }
 }
 
@@ -1837,39 +1800,39 @@ class SliverOverlapAbsorberHandle extends ChangeNotifier {
 ///
 /// The difference between the overlap requested by the child `sliver` and the
 /// overlap reported by this widget, called the _absorbed overlap_, is reported
-/// to the [SliverOverlapAbsorberHandle], which is typically passed to a
-/// [SliverOverlapInjector].
+/// to the [ExtendedSliverOverlapAbsorberHandle], which is typically passed to a
+/// [ExtendedSliverOverlapInjector].
 ///
 /// See also:
 ///
 ///  * [ExtendedNestedScrollView], whose documentation has sample code showing how to
 ///    use this widget.
-class SliverOverlapAbsorber extends SingleChildRenderObjectWidget {
+class ExtendedSliverOverlapAbsorber extends SingleChildRenderObjectWidget {
   /// Creates a sliver that absorbs overlap and reports it to a
-  /// [SliverOverlapAbsorberHandle].
-  const SliverOverlapAbsorber({super.key, required this.handle, Widget? sliver})
+  /// [ExtendedSliverOverlapAbsorberHandle].
+  const ExtendedSliverOverlapAbsorber({super.key, required this.handle, Widget? sliver})
     : super(child: sliver);
 
   /// The object in which the absorbed overlap is recorded.
   ///
-  /// A particular [SliverOverlapAbsorberHandle] can only be assigned to a
-  /// single [SliverOverlapAbsorber] at a time.
-  final SliverOverlapAbsorberHandle handle;
+  /// A particular [ExtendedSliverOverlapAbsorberHandle] can only be assigned to a
+  /// single [ExtendedSliverOverlapAbsorber] at a time.
+  final ExtendedSliverOverlapAbsorberHandle handle;
 
   @override
-  RenderSliverOverlapAbsorber createRenderObject(BuildContext context) {
-    return RenderSliverOverlapAbsorber(handle: handle);
+  RenderExtendedSliverOverlapAbsorber createRenderObject(BuildContext context) {
+    return RenderExtendedSliverOverlapAbsorber(handle: handle);
   }
 
   @override
-  void updateRenderObject(BuildContext context, RenderSliverOverlapAbsorber renderObject) {
+  void updateRenderObject(BuildContext context, RenderExtendedSliverOverlapAbsorber renderObject) {
     renderObject.handle = handle;
   }
 
   @override
   void debugFillProperties(DiagnosticPropertiesBuilder properties) {
     super.debugFillProperties(properties);
-    properties.add(DiagnosticsProperty<SliverOverlapAbsorberHandle>('handle', handle));
+    properties.add(DiagnosticsProperty<ExtendedSliverOverlapAbsorberHandle>('handle', handle));
   }
 }
 
@@ -1878,26 +1841,26 @@ class SliverOverlapAbsorber extends SingleChildRenderObjectWidget {
 ///
 /// The difference between the overlap requested by the child `sliver` and the
 /// overlap reported by this widget, called the _absorbed overlap_, is reported
-/// to the [SliverOverlapAbsorberHandle], which is typically passed to a
-/// [RenderSliverOverlapInjector].
-class RenderSliverOverlapAbsorber extends RenderSliver
+/// to the [ExtendedSliverOverlapAbsorberHandle], which is typically passed to a
+/// [RenderExtendedSliverOverlapInjector].
+class RenderExtendedSliverOverlapAbsorber extends RenderSliver
     with RenderObjectWithChildMixin<RenderSliver> {
   /// Create a sliver that absorbs overlap and reports it to a
-  /// [SliverOverlapAbsorberHandle].
+  /// [ExtendedSliverOverlapAbsorberHandle].
   ///
   /// The [sliver] must be a [RenderSliver].
-  RenderSliverOverlapAbsorber({required SliverOverlapAbsorberHandle handle, RenderSliver? sliver})
+  RenderExtendedSliverOverlapAbsorber({required ExtendedSliverOverlapAbsorberHandle handle, RenderSliver? sliver})
     : _handle = handle {
     child = sliver;
   }
 
   /// The object in which the absorbed overlap is recorded.
   ///
-  /// A particular [SliverOverlapAbsorberHandle] can only be assigned to a
-  /// single [RenderSliverOverlapAbsorber] at a time.
-  SliverOverlapAbsorberHandle get handle => _handle;
-  SliverOverlapAbsorberHandle _handle;
-  set handle(SliverOverlapAbsorberHandle value) {
+  /// A particular [ExtendedSliverOverlapAbsorberHandle] can only be assigned to a
+  /// single [RenderExtendedSliverOverlapAbsorber] at a time.
+  ExtendedSliverOverlapAbsorberHandle get handle => _handle;
+  ExtendedSliverOverlapAbsorberHandle _handle;
+  set handle(ExtendedSliverOverlapAbsorberHandle value) {
     if (handle == value) {
       return;
     }
@@ -1925,7 +1888,7 @@ class RenderSliverOverlapAbsorber extends RenderSliver
   void performLayout() {
     assert(
       handle._writers == 1,
-      'A SliverOverlapAbsorberHandle cannot be passed to multiple RenderSliverOverlapAbsorber objects at the same time.',
+      'A ExtendedSliverOverlapAbsorberHandle cannot be passed to multiple RenderExtendedSliverOverlapAbsorber objects at the same time.',
     );
     if (child == null) {
       geometry = SliverGeometry.zero;
@@ -1978,60 +1941,60 @@ class RenderSliverOverlapAbsorber extends RenderSliver
   @override
   void debugFillProperties(DiagnosticPropertiesBuilder properties) {
     super.debugFillProperties(properties);
-    properties.add(DiagnosticsProperty<SliverOverlapAbsorberHandle>('handle', handle));
+    properties.add(DiagnosticsProperty<ExtendedSliverOverlapAbsorberHandle>('handle', handle));
   }
 }
 
 /// A sliver that has a sliver geometry based on the values stored in a
-/// [SliverOverlapAbsorberHandle].
+/// [ExtendedSliverOverlapAbsorberHandle].
 ///
-/// The [SliverOverlapAbsorber] must be an earlier descendant of a common
+/// The [ExtendedSliverOverlapAbsorber] must be an earlier descendant of a common
 /// ancestor [Viewport], so that it will always be laid out before the
-/// [SliverOverlapInjector] during a particular frame.
+/// [ExtendedSliverOverlapInjector] during a particular frame.
 ///
 /// See also:
 ///
-///  * [ExtendedNestedScrollView], which uses a [SliverOverlapAbsorber] to align its
+///  * [ExtendedNestedScrollView], which uses a [ExtendedSliverOverlapAbsorber] to align its
 ///    children, and which shows sample usage for this class.
-class SliverOverlapInjector extends SingleChildRenderObjectWidget {
+class ExtendedSliverOverlapInjector extends SingleChildRenderObjectWidget {
   /// Creates a sliver that is as tall as the value of the given [handle]'s
   /// layout extent.
-  const SliverOverlapInjector({super.key, required this.handle, Widget? sliver})
+  const ExtendedSliverOverlapInjector({super.key, required this.handle, Widget? sliver})
     : super(child: sliver);
 
-  /// The handle to the [SliverOverlapAbsorber] that is feeding this injector.
+  /// The handle to the [ExtendedSliverOverlapAbsorber] that is feeding this injector.
   ///
-  /// This should be a handle owned by a [SliverOverlapAbsorber] and a
+  /// This should be a handle owned by a [ExtendedSliverOverlapAbsorber] and a
   /// [ExtendedNestedScrollViewViewport].
-  final SliverOverlapAbsorberHandle handle;
+  final ExtendedSliverOverlapAbsorberHandle handle;
 
   @override
-  RenderSliverOverlapInjector createRenderObject(BuildContext context) {
-    return RenderSliverOverlapInjector(handle: handle);
+  RenderExtendedSliverOverlapInjector createRenderObject(BuildContext context) {
+    return RenderExtendedSliverOverlapInjector(handle: handle);
   }
 
   @override
-  void updateRenderObject(BuildContext context, RenderSliverOverlapInjector renderObject) {
+  void updateRenderObject(BuildContext context, RenderExtendedSliverOverlapInjector renderObject) {
     renderObject.handle = handle;
   }
 
   @override
   void debugFillProperties(DiagnosticPropertiesBuilder properties) {
     super.debugFillProperties(properties);
-    properties.add(DiagnosticsProperty<SliverOverlapAbsorberHandle>('handle', handle));
+    properties.add(DiagnosticsProperty<ExtendedSliverOverlapAbsorberHandle>('handle', handle));
   }
 }
 
 /// A sliver that has a sliver geometry based on the values stored in a
-/// [SliverOverlapAbsorberHandle].
+/// [ExtendedSliverOverlapAbsorberHandle].
 ///
-/// The [RenderSliverOverlapAbsorber] must be an earlier descendant of a common
+/// The [RenderExtendedSliverOverlapAbsorber] must be an earlier descendant of a common
 /// ancestor [RenderViewport] (probably a [RenderExtendedNestedScrollViewViewport]), so
-/// that it will always be laid out before the [RenderSliverOverlapInjector]
+/// that it will always be laid out before the [RenderExtendedSliverOverlapInjector]
 /// during a particular frame.
-class RenderSliverOverlapInjector extends RenderSliver {
+class RenderExtendedSliverOverlapInjector extends RenderSliver {
   /// Creates a sliver that is as tall as the value of the given [handle]'s extent.
-  RenderSliverOverlapInjector({required SliverOverlapAbsorberHandle handle}) : _handle = handle;
+  RenderExtendedSliverOverlapInjector({required ExtendedSliverOverlapAbsorberHandle handle}) : _handle = handle;
 
   double? _currentLayoutExtent;
   double? _currentMaxExtent;
@@ -2039,11 +2002,11 @@ class RenderSliverOverlapInjector extends RenderSliver {
   /// The object that specifies how wide to make the gap injected by this render
   /// object.
   ///
-  /// This should be a handle owned by a [RenderSliverOverlapAbsorber] and a
+  /// This should be a handle owned by a [RenderExtendedSliverOverlapAbsorber] and a
   /// [RenderExtendedNestedScrollViewViewport].
-  SliverOverlapAbsorberHandle get handle => _handle;
-  SliverOverlapAbsorberHandle _handle;
-  set handle(SliverOverlapAbsorberHandle value) {
+  ExtendedSliverOverlapAbsorberHandle get handle => _handle;
+  ExtendedSliverOverlapAbsorberHandle _handle;
+  set handle(ExtendedSliverOverlapAbsorberHandle value) {
     if (handle == value) {
       return;
     }
@@ -2080,11 +2043,11 @@ class RenderSliverOverlapInjector extends RenderSliver {
     _currentMaxExtent = handle.layoutExtent;
     assert(
       _currentLayoutExtent != null && _currentMaxExtent != null,
-      'SliverOverlapInjector has found no absorbed extent to inject.\n '
-      'The SliverOverlapAbsorber must be an earlier descendant of a common '
+      'ExtendedSliverOverlapInjector has found no absorbed extent to inject.\n '
+      'The ExtendedSliverOverlapAbsorber must be an earlier descendant of a common '
       'ancestor Viewport, so that it will always be laid out before the '
-      'SliverOverlapInjector during a particular frame.\n '
-      'The SliverOverlapAbsorber is typically contained in the list of slivers '
+      'ExtendedSliverOverlapInjector during a particular frame.\n '
+      'The ExtendedSliverOverlapAbsorber is typically contained in the list of slivers '
       'provided by ExtendedNestedScrollView.headerSliverBuilder.\n',
     );
     final double clampedPaintExtent = math.min(
@@ -2142,16 +2105,16 @@ class RenderSliverOverlapInjector extends RenderSliver {
   @override
   void debugFillProperties(DiagnosticPropertiesBuilder properties) {
     super.debugFillProperties(properties);
-    properties.add(DiagnosticsProperty<SliverOverlapAbsorberHandle>('handle', handle));
+    properties.add(DiagnosticsProperty<ExtendedSliverOverlapAbsorberHandle>('handle', handle));
   }
 }
 
 /// The [Viewport] variant used by [ExtendedNestedScrollView].
 ///
-/// This viewport takes a [SliverOverlapAbsorberHandle] and notifies it any time
+/// This viewport takes a [ExtendedSliverOverlapAbsorberHandle] and notifies it any time
 /// the viewport needs to recompute its layout (e.g. when it is scrolled).
 class ExtendedNestedScrollViewViewport extends Viewport {
-  /// Creates a variant of [Viewport] that has a [SliverOverlapAbsorberHandle].
+  /// Creates a variant of [Viewport] that has a [ExtendedSliverOverlapAbsorberHandle].
   ExtendedNestedScrollViewViewport({
     super.key,
     super.axisDirection,
@@ -2164,8 +2127,8 @@ class ExtendedNestedScrollViewViewport extends Viewport {
     super.clipBehavior,
   });
 
-  /// The handle to the [SliverOverlapAbsorber] that is feeding this injector.
-  final SliverOverlapAbsorberHandle handle;
+  /// The handle to the [ExtendedSliverOverlapAbsorber] that is feeding this injector.
+  final ExtendedSliverOverlapAbsorberHandle handle;
 
   @override
   RenderExtendedNestedScrollViewViewport createRenderObject(BuildContext context) {
@@ -2195,17 +2158,17 @@ class ExtendedNestedScrollViewViewport extends Viewport {
   @override
   void debugFillProperties(DiagnosticPropertiesBuilder properties) {
     super.debugFillProperties(properties);
-    properties.add(DiagnosticsProperty<SliverOverlapAbsorberHandle>('handle', handle));
+    properties.add(DiagnosticsProperty<ExtendedSliverOverlapAbsorberHandle>('handle', handle));
   }
 }
 
 /// The [RenderViewport] variant used by [ExtendedNestedScrollView].
 ///
-/// This viewport takes a [SliverOverlapAbsorberHandle] and notifies it any time
+/// This viewport takes a [ExtendedSliverOverlapAbsorberHandle] and notifies it any time
 /// the viewport needs to recompute its layout (e.g. when it is scrolled).
 class RenderExtendedNestedScrollViewViewport extends RenderViewport {
   /// Create a variant of [RenderViewport] that has a
-  /// [SliverOverlapAbsorberHandle].
+  /// [ExtendedSliverOverlapAbsorberHandle].
   RenderExtendedNestedScrollViewViewport({
     super.axisDirection,
     required super.crossAxisDirection,
@@ -2213,16 +2176,16 @@ class RenderExtendedNestedScrollViewViewport extends RenderViewport {
     super.anchor,
     super.children,
     super.center,
-    required SliverOverlapAbsorberHandle handle,
+    required ExtendedSliverOverlapAbsorberHandle handle,
     super.clipBehavior,
   }) : _handle = handle;
 
   /// The object to notify when [markNeedsLayout] is called.
-  SliverOverlapAbsorberHandle get handle => _handle;
-  SliverOverlapAbsorberHandle _handle;
+  ExtendedSliverOverlapAbsorberHandle get handle => _handle;
+  ExtendedSliverOverlapAbsorberHandle _handle;
 
   /// Setting this will trigger notifications on the new object.
-  set handle(SliverOverlapAbsorberHandle value) {
+  set handle(ExtendedSliverOverlapAbsorberHandle value) {
     if (handle == value) {
       return;
     }
@@ -2239,6 +2202,6 @@ class RenderExtendedNestedScrollViewViewport extends RenderViewport {
   @override
   void debugFillProperties(DiagnosticPropertiesBuilder properties) {
     super.debugFillProperties(properties);
-    properties.add(DiagnosticsProperty<SliverOverlapAbsorberHandle>('handle', handle));
+    properties.add(DiagnosticsProperty<ExtendedSliverOverlapAbsorberHandle>('handle', handle));
   }
 }

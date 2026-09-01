@@ -8,8 +8,8 @@ A runnable profile screen that demonstrates the `headerStretch` behavior of the
 - A stretchable `SliverAppBar` (`stretch: true` / `zoomBackground` + `fadeTitle`).
 - A `SliverStack` (from [`sliver_tools`](https://pub.dev/packages/sliver_tools))
   that floats a user card over the banner.
-- A pinned header with a `TabBar`, using `SliverOverlapAbsorber` /
-  `SliverOverlapInjector` so three tab lists stay correctly aligned and scroll
+- A pinned header with a `TabBar`, using `ExtendedSliverOverlapAbsorber` /
+  `ExtendedSliverOverlapInjector` so three tab lists stay correctly aligned and scroll
   independently.
 - `RefreshIndicator` pull-to-refresh, which works because the stretch emits
   real scroll updates at depth 0.

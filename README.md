@@ -72,7 +72,7 @@ ExtendedNestedScrollView(
       ),
       // Any pinned, stretched header goes here, optionally wrapped in a
       // SliverStack (from sliver_tools) to float content over the banner.
-      SliverOverlapAbsorber(
+      ExtendedSliverOverlapAbsorber(
         handle: handle,
         sliver: const SliverPersistentHeader(pinned: true, delegate: MyTabBarDelegate()),
       ),
@@ -93,17 +93,16 @@ ExtendedNestedScrollView(
 ```
 
 Each tab list is a `CustomScrollView` (with `AlwaysScrollableScrollPhysics`)
-that starts with a `SliverOverlapInjector(handle: handle)` so content sits
+that starts with a `ExtendedSliverOverlapInjector(handle: handle)` so content sits
 correctly below the pinned header. Wrap the whole view in a
 `RefreshIndicator` for pull-to-refresh.
 
 A complete, runnable profile screen lives in [`example/`](example).
 
-> **Note:** the enum names `StretchMode`, the overlap widgets
-> (`SliverOverlapAbsorber`, `SliverOverlapInjector`, `SliverOverlapAbsorberHandle`)
-> and `NestedScrollView`/`NestedScrollViewState` are re-exported by this package
-> as their own types, so if you import both `material.dart` and this package you
-> may need to hide the stock ones or use a prefix.
+No breaking-name collisions are needed: the overlap slivers this package exposes
+are named `ExtendedSliverOverlapAbsorber`, `ExtendedSliverOverlapInjector` and
+`ExtendedSliverOverlapAbsorberHandle`, so you can import `material.dart` and
+this package together without any `hide` or prefix.
 
 ## API
 

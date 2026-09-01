@@ -1,5 +1,4 @@
-import 'package:flutter/material.dart'
-    hide SliverOverlapAbsorber, SliverOverlapAbsorberHandle, SliverOverlapInjector;
+import 'package:flutter/material.dart';
 
 import 'package:extended_nested_scroll_view/extended_nested_scroll_view.dart';
 import 'package:sliver_tools/sliver_tools.dart';
@@ -73,7 +72,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 // Track the overlap the pinned header creates so each tab
                 // list can inject the same spacing below it.
-                SliverOverlapAbsorber(
+                ExtendedSliverOverlapAbsorber(
                   handle: handle,
                   sliver: SliverPersistentHeader(
                     pinned: true,
@@ -109,7 +108,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 class _TabList extends StatelessWidget {
   const _TabList({required this.handle, required this.tab});
 
-  final SliverOverlapAbsorberHandle handle;
+  final ExtendedSliverOverlapAbsorberHandle handle;
   final int tab;
 
   @override
@@ -118,7 +117,7 @@ class _TabList extends StatelessWidget {
       key: ValueKey<String>('tab-$tab'),
       physics: const AlwaysScrollableScrollPhysics(),
       slivers: <Widget>[
-        SliverOverlapInjector(handle: handle),
+        ExtendedSliverOverlapInjector(handle: handle),
         SliverPadding(
           padding: const EdgeInsets.all(12),
           sliver: SliverList(

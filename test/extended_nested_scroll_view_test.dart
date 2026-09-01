@@ -72,7 +72,7 @@ Widget _withTabs(Widget scrollView) {
 /// `_Inherited*` widget, so this exercises the documented contract: the body's
 /// context sits below the nested view, and the static handle lookup brings the
 /// pinned-header overlap into each tab list via `SliverOverlapInjector`.
-ext.SliverOverlapAbsorberHandle extendedHandleOf(BuildContext context) {
+ext.ExtendedSliverOverlapAbsorberHandle extendedHandleOf(BuildContext context) {
   return ext.ExtendedNestedScrollView.sliverOverlapAbsorberHandleFor(context);
 }
 
@@ -107,8 +107,8 @@ List<Widget> headerSlivers(Object? handle, {required bool sliverStack}) {
         ],
       ),
     const SliverToBoxAdapter(child: SizedBox(height: 80)),
-    ext.SliverOverlapAbsorber(
-      handle: handle as ext.SliverOverlapAbsorberHandle,
+    ext.ExtendedSliverOverlapAbsorber(
+      handle: handle as ext.ExtendedSliverOverlapAbsorberHandle,
       sliver: const SliverPersistentHeader(
         pinned: true,
         delegate: _TabBarDelegate(),
@@ -128,13 +128,13 @@ Widget bodyFor(BuildContext context) {
   );
 }
 
-Widget tabList(ext.SliverOverlapAbsorberHandle handle, {required int tab}) {
+Widget tabList(ext.ExtendedSliverOverlapAbsorberHandle handle, {required int tab}) {
   return Builder(
     builder: (context) => CustomScrollView(
       key: ValueKey<String>('tab-$tab'),
       physics: const AlwaysScrollableScrollPhysics(),
       slivers: <Widget>[
-        ext.SliverOverlapInjector(handle: handle),
+        ext.ExtendedSliverOverlapInjector(handle: handle),
         SliverPadding(
           padding: const EdgeInsets.all(12),
           sliver: SliverList(
