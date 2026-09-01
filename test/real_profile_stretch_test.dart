@@ -157,4 +157,47 @@ void main() {
     expect(state.outerController.position.pixels, 0,
         reason: 'releasing must rebound the outer back to 0');
   });
+
+  // Regression for the "extra <= 0.0" crash: the app tripped it when the OUTER
+// was in negative stretch overscroll AND the INNER was also slightly
+// over-scrolled below 0, then a frame/re-layout re-ran _getMetrics via
+// applyNewDimensions (third else-branch). We reproduce that diagonal state by
+// pulling the whole scroll into overscroll and forcing a re-layout mid-motion
+// via a surface-size change.
+  testWidgets(
+      'regression: re-layout with outer+inner overscrolled does not trip extra<=0',
+      (tester) async {
+    await tester.pumpWidget(buildRealProfile());
+    await tester.pump();
+
+    final state = tester.state<ext.ExtendedNestedScrollViewState>(
+        find.byType(ext.ExtendedNestedScrollView));
+
+    // Drag the active grid down hard so both the outer (banner) and the inner
+    // list go into negative overscroll — the exact diagonal state of the crash.
+    final center = tester.getCenter(find.byType(TabBarView));
+    final down = await tester.startGesture(center, pointer: 7);
+    for (var i = 0; i < 18; i++) {
+      await down.moveBy(const Offset(0, 16));
+      await tester.pump();
+    }
+    expect(state.outerController.position.pixels, lessThan(0),
+        reason: 'the outer banner must be over-scrolled negative first');
+
+    // While the ballistic is settling, force a re-layout (viewport changes size);
+    // applyNewDimensions then re-runs _getMetrics with outer < 0.
+    await tester.binding.setSurfaceSize(const Size(402, 700));
+    await tester.pump();
+    await tester.binding.setSurfaceSize(const Size(402, 500));
+    await tester.pump();
+
+    expect(tester.takeException(), isNull,
+        reason: 're-laying out during a double overscroll must not assert');
+    await down.up();
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull,
+        reason: 'no assertion (extra <= 0.0) while re-laying out during a stretch');
+    expect(state.outerController.position.pixels, 0,
+        reason: 'releasing after the re-layout must rebound the outer back to 0');
+  });
 }

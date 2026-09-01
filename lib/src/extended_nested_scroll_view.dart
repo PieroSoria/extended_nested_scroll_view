@@ -851,14 +851,25 @@ class _NestedScrollCoordinator implements ScrollActivityDelegate, ScrollHoldCont
         // underscrolled, OR, going backward (fling down) and inner list is
         // scrolled past zero. We want to skip the pixels we don't need to grow
         // or shrink over.
+        //
+        // `headerStretch` lets the outer overscroll below minScrollExtent
+        // (negative pixels) and, when pulled then released, the outer may still
+        // be negative when this runs via applyNewDimensions. That violates the
+        // invariant assumed here (outer.pixels within [min, max]), so clamp it:
+        // an active stretch must not count as space left to grow/shrink.
+        final double outerPixels = _outerPosition!.pixels.clamp(
+          _outerPosition!.minScrollExtent,
+          _outerPosition!.maxScrollExtent,
+        );
         if (velocity > 0.0) {
           // shrinking
-          extra = _outerPosition!.minScrollExtent - _outerPosition!.pixels;
+          extra = _outerPosition!.minScrollExtent - outerPixels;
         } else if (velocity < 0.0) {
           // growing
-          extra =
-              _outerPosition!.pixels -
+          extra = outerPixels -
               (_outerPosition!.maxScrollExtent - _outerPosition!.minScrollExtent);
+        } else {
+          extra = 0.0;
         }
         assert(extra <= 0.0);
         minRange = _outerPosition!.minScrollExtent;
