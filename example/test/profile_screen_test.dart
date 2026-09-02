@@ -39,27 +39,37 @@ void main() {
         reason: 'releasing must spring the banner back to the top');
   });
 
-  testWidgets('pull-to-refresh fires with a stock RefreshIndicator',
+  testWidgets('pull-to-refresh lives on each tab (not on the whole scroll)',
       (tester) async {
     await tester.pumpWidget(const MaterialApp(home: ProfileScreen()));
     await tester.pump();
 
-    // Overscroll the banner far enough to arm the pull indicator, then release.
+    final state = tester.state<ExtendedNestedScrollViewState>(
+        find.byType(ExtendedNestedScrollView));
+    final inner = state.innerController.position;
+
+    // The per-tab RefreshIndicator exists at rest (verified when idle; mid-pull
+    // the TabBarView lazily disposes offscreen children so the finder is empty).
+    expect(find.byType(RefreshIndicator), findsAtLeastNWidgets(1),
+        reason: 'each tab owns its own RefreshIndicator (not the whole scroll)');
+
+    // Pull down hard from the top: the banner stretches (outer < 0) but the
+    // grid's inner scroll must stay parked at 0 — no blank gap below the tab bar.
     final gesture =
         await tester.startGesture(tester.getCenter(find.byType(TabBarView)));
     for (var i = 0; i < 40; i++) {
       await gesture.moveBy(const Offset(0, 12));
       await tester.pump();
     }
+    expect(state.outerController.position.pixels, lessThan(0),
+        reason: 'the banner must stretch while pulling from the top');
+    expect(inner.pixels, greaterThanOrEqualTo(0),
+        reason: 'the grid (inner) must not be dragged below 0 while the banner '
+            'stretches; got inner.pixels=${inner.pixels}');
+
     await gesture.up();
-    await tester.pump();
-    // The Material RefreshIndicator is now in its refreshing state.
-    expect(find.byType(RefreshProgressIndicator), findsOneWidget,
-        reason: 'a hard pull must arm the Material RefreshIndicator');
-    // Let the 3s onRefresh future finish and the dismiss animation settle.
-    await tester.pump(const Duration(seconds: 4));
     await tester.pumpAndSettle();
-    expect(find.byType(RefreshProgressIndicator), findsNothing,
-        reason: 'the indicator must dismiss once onRefresh completes');
+    expect(state.outerController.position.pixels, 0,
+        reason: 'releasing must spring the banner back to the top');
   });
 }

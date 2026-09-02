@@ -1,7 +1,7 @@
-import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:extended_nested_scroll_view/extended_nested_scroll_view.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:sliver_tools/sliver_tools.dart';
 
@@ -33,22 +33,32 @@ class _ProfileScreenState extends State<ProfileScreen>
   final globaloffsetValue = ValueNotifier<double>(0);
   double speedFactor = 3.0;
 
+  // Base top offset of the floating card, resolved once instead of on every
+  // scroll notification (target platform is effectively constant).
+  late final double _cardBaseTop;
+
   @override
   void initState() {
     super.initState();
+    _cardBaseTop = defaultTargetPlatform == TargetPlatform.android ? 210.0 : 230.0;
     _tabController = TabController(length: 3, vsync: this);
     scrollControllerGlobal = ScrollController();
     scrollControllerGlobal.addListener(_listener);
   }
 
+  // Throttle redundant notifier emissions: scroll notifications fire on every
+  // pointer/tick, but the floating card only cares when the value actually
+  // changes. Skipping no-op writes avoids needless rebuilds of the overlay.
   void _listener() {
-    globaloffsetValue.value = scrollControllerGlobal.offset;
+    final double offset = scrollControllerGlobal.offset;
+    if (offset != globaloffsetValue.value) {
+      globaloffsetValue.value = offset;
+    }
   }
 
   double positionInfo(double value) => math.max(
         0.0,
-        (Platform.isAndroid ? 210 : 230) -
-            (value / (value.isNegative ? 1 : speedFactor)),
+        _cardBaseTop - (value / (value < 0 ? 1 : speedFactor)),
       );
 
   @override
@@ -63,77 +73,79 @@ class _ProfileScreenState extends State<ProfileScreen>
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
 
+    // The whole nested scroll tree is built once and never rebuilt on scroll.
+    // Only the small overlay pieces that actually depend on the scroll offset
+    // subscribe to `globaloffsetValue` (the floating info card and the
+    // collapsing title), which keeps per-frame work to a minimum.
     return Scaffold(
       body: SizedBox(
         width: size.width,
         height: size.height,
-        child: ValueListenableBuilder<double>(
-          valueListenable: globaloffsetValue,
-          builder: (context, offsetValue, child) {
-            return RefreshIndicator(
-              onRefresh: () async {
-                await Future<void>.delayed(const Duration(seconds: 3));
-              },
-              child: ExtendedNestedScrollView(
-                headerStretch: true,
-                controller: scrollControllerGlobal,
-                physics: const BouncingScrollPhysics(
-                  parent: AlwaysScrollableScrollPhysics(),
-                ),
-                headerSliverBuilder: (context, innerBoxIsScrolled) {
-                  final handle =
-                      ExtendedNestedScrollView.sliverOverlapAbsorberHandleFor(
-                        context,
-                      );
-                  return [
-                    ExtendedSliverOverlapAbsorber(
-                      handle: handle,
-                      sliver: SliverStack(
+        child: ExtendedNestedScrollView(
+          headerStretch: true,
+          controller: scrollControllerGlobal,
+          physics: const ClampingScrollPhysics(
+            parent: AlwaysScrollableScrollPhysics(),
+          ),
+          headerSliverBuilder: (context, innerBoxIsScrolled) {
+              final handle =
+                  ExtendedNestedScrollView.sliverOverlapAbsorberHandleFor(
+                    context,
+                  );
+              return [
+                ExtendedSliverOverlapAbsorber(
+                  handle: handle,
+                  sliver: SliverStack(
+                    children: [
+                      MultiSliver(
                         children: [
-                          MultiSliver(
-                            children: [
-                              const ProfileBannerSliverAppBar(),
-                              const SliverToBoxAdapter(
-                                child: SizedBox(height: 140),
-                              ),
-                              ProfileTabBarSliverAppBar(
-                                tabController: _tabController,
-                                globalOffsetValue: globaloffsetValue,
-                              ),
-                            ],
+                          const ProfileBannerSliverAppBar(),
+                          const SliverToBoxAdapter(
+                            child: SizedBox(height: 140),
                           ),
-                          SliverPositioned.fill(
-                            top: positionInfo(offsetValue),
-                            child: const ProfileInfoAndAchievementsSection(),
+                          ProfileTabBarSliverAppBar(
+                            tabController: _tabController,
+                            globalOffsetValue: globaloffsetValue,
                           ),
-                          ProfileSettingsButton(size: size),
                         ],
                       ),
-                    ),
-                  ];
-                },
-                body: Builder(
-                  builder: (context) {
-                    final handle =
-                        ExtendedNestedScrollView.sliverOverlapAbsorberHandleFor(
-                          context,
-                        );
-                    return TabBarView(
-                      controller: _tabController,
-                      children: [
-                        GridPostsWidget(handle: handle),
-                        ListWorkWidget(handle: handle),
-                        const ListMusicWidget(),
-                      ],
-                    );
-                  },
+                      // Floating info card: only this overlay repaints on scroll.
+                      SliverPositioned.fill(
+                        top: 0,
+                        child: ValueListenableBuilder<double>(
+                          valueListenable: globaloffsetValue,
+                          builder: (context, offsetValue, _) => Padding(
+                            padding:
+                                EdgeInsets.only(top: positionInfo(offsetValue)),
+                            child: const ProfileInfoAndAchievementsSection(),
+                          ),
+                        ),
+                      ),
+                      ProfileSettingsButton(size: size),
+                    ],
+                  ),
                 ),
+              ];
+            },
+            body: Builder(
+              builder: (context) {
+                final handle =
+                    ExtendedNestedScrollView.sliverOverlapAbsorberHandleFor(
+                      context,
+                    );
+                return TabBarView(
+                  controller: _tabController,
+                  children: [
+                    GridPostsWidget(handle: handle),
+                    ListWorkWidget(handle: handle),
+                    const ListMusicWidget(),
+                  ],
+                );
+              },
               ),
-            );
-          },
-        ),
-      ),
-    );
+            ),
+          ),
+        );
   }
 }
 
@@ -240,7 +252,8 @@ class ProfileSettingsButton extends StatelessWidget {
 
     return SliverPositioned.fill(
       left: size.width - 55,
-      bottom: (size.height / 1.25) - (Platform.isIOS ? 25 : 0),
+      bottom: (size.height / 1.25) -
+          (defaultTargetPlatform == TargetPlatform.iOS ? 25 : 0),
       child: Container(
         width: 34,
         height: 34,
@@ -359,26 +372,42 @@ class GridPostsWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return CustomScrollView(
-      key: const ValueKey<String>('grid-posts'),
-      physics: const AlwaysScrollableScrollPhysics(),
-      slivers: [
-        ExtendedSliverOverlapInjector(handle: handle),
-        SliverGrid(
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3,
-            mainAxisSpacing: 4,
-            crossAxisSpacing: 4,
-          ),
-          delegate: SliverChildBuilderDelegate(
-            (context, i) => Container(
-              color: Colors.primaries[i % Colors.primaries.length].shade300,
-            ),
-            childCount: 30,
-          ),
+    // Best practice: put the RefreshIndicator on the tab's OWN scroll view,
+    // NOT wrapping the whole ExtendedNestedScrollView. This way the pull
+    // displacement only affects this tab's list and never shoves the tab bar
+    // or reveals a blank gap between the tab bar and the grid.
+    return RefreshIndicator(
+      onRefresh: _onRefresh,
+      child: CustomScrollView(
+        key: const ValueKey<String>('grid-posts'),
+        // ClampingScrollPhysics removes the over-scroll/bounce that otherwise
+        // drags the grid down and leaves a blank gap on pull-to-refresh.
+        physics: const ClampingScrollPhysics(
+          parent: AlwaysScrollableScrollPhysics(),
         ),
-      ],
+        slivers: [
+          ExtendedSliverOverlapInjector(handle: handle),
+          SliverGrid(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              mainAxisSpacing: 4,
+              crossAxisSpacing: 4,
+            ),
+            delegate: SliverChildBuilderDelegate(
+              (context, i) => Container(
+                key: ValueKey<String>('grid-cell-$i'),
+                color: Colors.primaries[i % Colors.primaries.length].shade300,
+              ),
+              childCount: 30,
+            ),
+          ),
+        ],
+      ),
     );
+  }
+
+  Future<void> _onRefresh() async {
+    await Future<void>.delayed(const Duration(seconds: 3));
   }
 }
 
@@ -389,21 +418,28 @@ class ListWorkWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return CustomScrollView(
-      key: const ValueKey<String>('list-work'),
-      physics: const AlwaysScrollableScrollPhysics(),
-      slivers: [
-        ExtendedSliverOverlapInjector(handle: handle),
-        SliverList(
-          delegate: SliverChildBuilderDelegate(
-            (context, i) => ListTile(
-              title: Text('Obra ${i + 1}'),
-              leading: const Icon(Icons.menu_book),
-            ),
-            childCount: 30,
-          ),
+    return RefreshIndicator(
+      onRefresh: () async {
+        await Future<void>.delayed(const Duration(seconds: 3));
+      },
+      child: CustomScrollView(
+        key: const ValueKey<String>('list-work'),
+        physics: const ClampingScrollPhysics(
+          parent: AlwaysScrollableScrollPhysics(),
         ),
-      ],
+        slivers: [
+          ExtendedSliverOverlapInjector(handle: handle),
+          SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, i) => ListTile(
+                title: Text('Obra ${i + 1}'),
+                leading: const Icon(Icons.menu_book),
+              ),
+              childCount: 30,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
