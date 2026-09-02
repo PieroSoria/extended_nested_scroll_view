@@ -805,75 +805,74 @@ class _NestedScrollCoordinator implements ScrollActivityDelegate, ScrollHoldCont
     );
   }
 
-  _NestedScrollMetrics _getMetrics(_NestedScrollPosition innerPosition, double velocity) {
+_NestedScrollMetrics _getMetrics(_NestedScrollPosition innerPosition, double velocity) {
     double pixels, minRange, maxRange, correctionOffset;
     var extra = 0.0;
+    // `headerStretch` lets the outer over-scroll below its minScrollExtent
+    // (negative pixels) and, when pulled then released, the outer may still be
+    // negative when applyNewDimensions re-runs this. That violates the SDK
+    // invariant (outer.pixels within [min, max]) asserted in every branch, so
+    // compute a clamped view of the outer position once: an active stretch must
+    // not count as space left to grow/shrink.
+    final double outerMin = _outerPosition!.minScrollExtent;
+    final double outerMax = _outerPosition!.maxScrollExtent;
+    final double outerPixels =
+        _outerPosition!.pixels.clamp(outerMin, outerMax);
     if (innerPosition.pixels == innerPosition.minScrollExtent) {
       pixels = clampDouble(
         _outerPosition!.pixels,
-        _outerPosition!.minScrollExtent,
-        _outerPosition!.maxScrollExtent,
+        outerMin,
+        outerMax,
       ); // TODO(ianh): gracefully handle out-of-range outer positions
-      minRange = _outerPosition!.minScrollExtent;
-      maxRange = _outerPosition!.maxScrollExtent;
+      minRange = outerMin;
+      maxRange = outerMax;
       assert(minRange <= maxRange);
       correctionOffset = 0.0;
     } else {
       assert(innerPosition.pixels != innerPosition.minScrollExtent);
       if (innerPosition.pixels < innerPosition.minScrollExtent) {
         pixels =
-            innerPosition.pixels - innerPosition.minScrollExtent + _outerPosition!.minScrollExtent;
+            innerPosition.pixels - innerPosition.minScrollExtent + outerMin;
       } else {
         assert(innerPosition.pixels > innerPosition.minScrollExtent);
         pixels =
-            innerPosition.pixels - innerPosition.minScrollExtent + _outerPosition!.maxScrollExtent;
+            innerPosition.pixels - innerPosition.minScrollExtent + outerMax;
       }
       if ((velocity > 0.0) && (innerPosition.pixels > innerPosition.minScrollExtent)) {
         // This handles going forward (fling up) and inner list is scrolled past
         // zero. We want to grab the extra pixels immediately to shrink.
-        extra = _outerPosition!.maxScrollExtent - _outerPosition!.pixels;
+        extra = outerMax - outerPixels;
         assert(extra >= 0.0);
         minRange = pixels;
         maxRange = pixels + extra;
         assert(minRange <= maxRange);
-        correctionOffset = _outerPosition!.pixels - pixels;
+        correctionOffset = outerPixels - pixels;
       } else if ((velocity < 0.0) && (innerPosition.pixels < innerPosition.minScrollExtent)) {
         // This handles going backward (fling down) and inner list is
         // underscrolled. We want to grab the extra pixels immediately to grow.
-        extra = _outerPosition!.pixels - _outerPosition!.minScrollExtent;
+        extra = outerPixels - outerMin;
         assert(extra >= 0.0);
         minRange = pixels - extra;
         maxRange = pixels;
         assert(minRange <= maxRange);
-        correctionOffset = _outerPosition!.pixels - pixels;
+        correctionOffset = outerPixels - pixels;
       } else {
         // This handles going forward (fling up) and inner list is
         // underscrolled, OR, going backward (fling down) and inner list is
         // scrolled past zero. We want to skip the pixels we don't need to grow
         // or shrink over.
-        //
-        // `headerStretch` lets the outer overscroll below minScrollExtent
-        // (negative pixels) and, when pulled then released, the outer may still
-        // be negative when this runs via applyNewDimensions. That violates the
-        // invariant assumed here (outer.pixels within [min, max]), so clamp it:
-        // an active stretch must not count as space left to grow/shrink.
-        final double outerPixels = _outerPosition!.pixels.clamp(
-          _outerPosition!.minScrollExtent,
-          _outerPosition!.maxScrollExtent,
-        );
         if (velocity > 0.0) {
           // shrinking
-          extra = _outerPosition!.minScrollExtent - outerPixels;
+          extra = outerMin - outerPixels;
         } else if (velocity < 0.0) {
           // growing
-          extra = outerPixels -
-              (_outerPosition!.maxScrollExtent - _outerPosition!.minScrollExtent);
+          extra = outerPixels - (outerMax - outerMin);
         } else {
           extra = 0.0;
         }
         assert(extra <= 0.0);
-        minRange = _outerPosition!.minScrollExtent;
-        maxRange = _outerPosition!.maxScrollExtent + extra;
+        minRange = outerMin;
+        maxRange = outerMax + extra;
         assert(minRange <= maxRange);
         correctionOffset = 0.0;
       }
